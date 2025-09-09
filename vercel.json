@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://your-render-app.onrender.com/api/$1"
+      "destination": "https://flippedcoin.onrender.com/api/$1"
     }
   ]
 }
