@@ -114,12 +114,6 @@
     .card.flipped .scan{ animation: sweep 900ms ease forwards }
     @keyframes sweep{ to{ transform:translateX(120%) } }
 
-    /* Tiny admin/dev panel for simulation */
-    .devpanel{ position:fixed; bottom:14px; right:14px; background:#0d1116cc; border:1px dashed #2a313a; padding:10px 12px; border-radius:12px; color:var(--muted); backdrop-filter:blur(6px)}
-    .devpanel input{ width:140px; background:#0f1419; border:1px solid #2a313a; color:var(--text); padding:6px 8px; border-radius:8px }
-    .devpanel button{ margin-left:8px }
-    .hint{ font-size:.8rem; color:#7f8b97; margin-top:6px }
-
     /* Ticker bar for ambience */
     .ticker{ position:sticky; top:0; z-index:5; margin-bottom:12px }
     .marquee{ overflow:hidden; border:1px solid var(--grid); border-radius:12px; background:linear-gradient(180deg, var(--panel), var(--panel-2)); }
@@ -170,14 +164,6 @@
 
     <!-- Items -->
     <div class="items" id="items"></div>
-  </div>
-
-  <!-- Dev panel for simulations / manual testing -->
-  <div class="devpanel">
-    MC: <input type="number" id="mcInput" min="0" step="100" value="0" />
-    <button class="btn" id="applyMc"><span class="shine"></span>Set MC</button>
-    <button class="btn" id="simulate"><span class="shine"></span>Simulate Flip</button>
-    <div class="hint">Hook this to Helius to go live. Simulation lets you demo the flip flow instantly.</div>
   </div>
 
 <script>
@@ -414,10 +400,11 @@ async function fetchMarketCap(){
 
   // Links + console hook
   window.FLIP = { setMarketCap };
-  document.getElementById('xLink').href = 'https://x.com/';
-  document.getElementById('buyLink').href = '#';
+  document.getElementById('xLink').href = 'https://x.com/flippedcoinsol';
+  document.getElementById('buyLink').href = 'https://pump.fun/board';
 </script>
 
 </body>
 </html>
+
 
