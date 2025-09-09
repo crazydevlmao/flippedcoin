@@ -300,7 +300,7 @@ async function fetchMarketCap(){
   });
 
   /* === Permanent flipped state (persist across drops & reloads) === */
-  const FLIPPED_KEY = 'flip.flipped.v1';
+  const FLIPPED_KEY = 'flip.flipped.v2';
   const flippedSet = new Set(JSON.parse(localStorage.getItem(FLIPPED_KEY) || '[]'));
   function saveFlipped(){ localStorage.setItem(FLIPPED_KEY, JSON.stringify([...flippedSet])); }
   function applyFlippedFromStorage(){
@@ -406,5 +406,6 @@ async function fetchMarketCap(){
 
 </body>
 </html>
+
 
 
