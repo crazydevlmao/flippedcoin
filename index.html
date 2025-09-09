@@ -7,17 +7,9 @@
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <style>
     :root{
-      --bg:#0b0d10;          /* deep space */
-      --panel:#12151a;       /* cards */
-      --panel-2:#0f1317;     /* alt */
-      --grid:#1a1f26;        /* grid lines */
-      --text:#e9eef6;
-      --muted:#9aa7b3;
-      --neon:#39ff88;        /* neon green */
-      --neon-soft:rgba(57,255,136,.18);
-      --danger:#ff4d4d;
-      --accent:#40d1ff;      /* cyber blue */
-      --gold:#d4af37;        
+      --bg:#0b0d10; --panel:#12151a; --panel-2:#0f1317; --grid:#1a1f26;
+      --text:#e9eef6; --muted:#9aa7b3; --neon:#39ff88; --neon-soft:rgba(57,255,136,.18);
+      --danger:#ff4d4d; --accent:#40d1ff; --gold:#d4af37;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
@@ -30,12 +22,10 @@
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
       overflow-x:hidden;
     }
-    /* Subtle moving grid */
     body::before{
       content:""; position:fixed; inset:0; pointer-events:none; opacity:.25;
-      background:
-        linear-gradient(transparent 31px, var(--grid) 32px),
-        linear-gradient(90deg, transparent 31px, var(--grid) 32px);
+      background:linear-gradient(transparent 31px, var(--grid) 32px),
+                 linear-gradient(90deg, transparent 31px, var(--grid) 32px);
       background-size:32px 32px, 32px 32px;
       mask: linear-gradient(#000, transparent 65%);
       animation: drift 30s linear infinite;
@@ -44,7 +34,6 @@
 
     .wrap{max-width:1200px; margin:0 auto; padding:24px 20px 96px}
 
-    /* Top controls */
     .topbar{display:flex; flex-direction:column; align-items:center; gap:18px; margin-bottom:20px}
     .btns{display:flex; gap:12px; justify-content:center}
     .btn{
@@ -52,8 +41,7 @@
       background:linear-gradient(180deg, var(--panel), var(--panel-2));
       color:var(--text); padding:12px 18px; border-radius:999px; letter-spacing:.08em; text-transform:uppercase; font-weight:700;
       box-shadow:0 0 0 0 var(--neon-soft), inset 0 0 20px rgba(255,255,255,.02);
-      transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
-      text-decoration:none; /* Requested: remove underline only */
+      transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease; text-decoration:none;
     }
     .btn:hover{ transform:translateY(-1px); border-color:var(--neon); box-shadow:0 0 24px -6px var(--neon-soft), inset 0 0 24px rgba(255,255,255,.04)}
     .btn:active{ transform:translateY(0)}
@@ -64,7 +52,6 @@
     .btn:hover .shine{opacity:.6}
     @keyframes spin{to{transform:rotate(360deg)}}
 
-    /* KPI Row */
     .kpis{display:grid; grid-template-columns: 1fr minmax(260px, 420px); gap:16px; align-items:stretch}
     .kpi, .latest{
       position:relative; background:linear-gradient(180deg, rgba(25,29,36,.9), rgba(16,19,24,.9));
@@ -72,7 +59,8 @@
     }
     .kpi::before, .latest::before{
       content:""; position:absolute; inset:0; border-radius:16px; pointer-events:none;
-      background:radial-gradient(100% 60% at 0% 0%, rgba(57,255,136,.12), transparent 40%), radial-gradient(80% 80% at 100% 0%, rgba(64,209,255,.08), transparent 40%);
+      background:radial-gradient(100% 60% at 0% 0%, rgba(57,255,136,.12), transparent 40%),
+                 radial-gradient(80% 80% at 100% 0%, rgba(64,209,255,.08), transparent 40%);
     }
     .label{font-size:.78rem; letter-spacing:.12em; color:var(--muted); text-transform:uppercase}
     .value{font-size:2rem; font-weight:800; letter-spacing:.02em; margin-top:6px}
@@ -83,7 +71,6 @@
     .title{font-weight:700}
     .cash{margin-left:auto; font-weight:800; color:var(--neon)}
 
-    /* Items grid */
     .items{margin-top:18px; display:grid; grid-template-columns:1fr; gap:10px}
     @media(min-width:860px){ .items{ grid-template-columns: 1fr 1fr } }
 
@@ -95,7 +82,6 @@
     .card .desc{color:var(--muted); font-size:.95rem; margin-top:4px}
     .card .price{font-weight:900; font-size:1.1rem; color:var(--neon)}
 
-    /* Flip (when crossed) */
     .card.flipped{ filter:saturate(.25) brightness(.75); border-color:#2a2f35; }
     .card.flipped::after{
       content:"FLIPPED"; position:absolute; right:12px; top:12px; padding:4px 8px; border:1px solid rgba(57,255,136,.35); color:var(--neon); border-radius:999px; font-weight:800; font-size:.72rem; letter-spacing:.1em; background:rgba(57,255,136,.08);
@@ -103,19 +89,16 @@
     }
     @keyframes pop{ from{ transform:scale(.8); opacity:.0 } to{ transform:scale(1); opacity:1 } }
 
-    /* Neon runners on edges */
     .card .runner, .kpi .runner, .latest .runner{ position:absolute; height:2px; width:40%; background:linear-gradient(90deg, transparent, var(--neon), transparent); opacity:.7; filter:blur(.5px) }
     .card .runner{ top:-1px; left:0; animation:run 3.6s linear infinite }
     .kpi .runner{ bottom:-1px; right:0; animation:run 4.2s linear infinite reverse }
     .latest .runner{ top:-1px; right:0; animation:run 4.8s linear infinite }
     @keyframes run{ from{ transform:translateX(-60%) } to{ transform:translateX(160%) } }
 
-    /* Little scanning shimmer when we flip */
     .scan{ position:absolute; inset:0; pointer-events:none; background:linear-gradient(120deg, transparent 0%, rgba(255,255,255,.05) 10%, transparent 20%); transform:translateX(-120%); }
     .card.flipped .scan{ animation: sweep 900ms ease forwards }
     @keyframes sweep{ to{ transform:translateX(120%) } }
 
-    /* Ticker bar for ambience */
     .ticker{ position:sticky; top:0; z-index:5; margin-bottom:12px }
     .marquee{ overflow:hidden; border:1px solid var(--grid); border-radius:12px; background:linear-gradient(180deg, var(--panel), var(--panel-2)); }
     .track{ display:flex; gap:36px; padding:8px 12px; white-space:nowrap; animation: marquee 30s linear infinite }
@@ -126,14 +109,12 @@
 </head>
 <body>
   <div class="wrap">
-    <!-- Ambient ticker -->
     <div class="ticker">
       <div class="marquee">
         <div class="track" id="tickerTrack"></div>
       </div>
     </div>
 
-    <!-- Top buttons -->
     <div class="topbar">
       <div class="btns">
         <a class="btn x" href="https://x.com/flippedcoinsol" id="xLink" aria-label="Go to X"><span class="shine"></span> X</a>
@@ -141,7 +122,6 @@
       </div>
     </div>
 
-    <!-- KPIs: Market Cap + Latest Flip -->
     <div class="kpis">
       <div class="kpi">
         <div class="runner"></div>
@@ -163,32 +143,26 @@
       </div>
     </div>
 
-    <!-- Items -->
     <div class="items" id="items"></div>
   </div>
 
 <script>
   /******************************
-   * $FLIP — Core Page Script   *
+   * $FLIPPED — Core Page Script
    ******************************/
-  const HELIUS_API_KEY = "327f04c4-f994-4093-996a-37c2a89462a0"; // your key
-  const FLIP_MINT = "DD8SzmbfyWKTMzHvJb5pGGx8dWxNkiCwZ1r9ZtjuBAGS";               // <<< set this
 
-  // Fetch market cap via Dexscreener (token lookup)
-  // Uses marketCap if available, otherwise falls back to FDV.
-  // Returns an integer USD value or null if not yet indexed.
-async function fetchMarketCap(){
-  try{
-    const resp = await fetch('/api/mc', { cache: 'no-store' });
-    if(!resp.ok) return null;
-    const data = await resp.json();
-    // Prefer ATH so flips never unflip; fallback to MC
-    return (typeof data.ath === 'number' ? data.ath : data.mc) ?? null;
-  }catch{
-    return null;
+  // ---- API bridge to your Render service via Vercel rewrite ----
+  async function fetchMarketCap(){
+    try{
+      const resp = await fetch('/api/mc', { cache: 'no-store' });
+      if(!resp.ok) return null;
+      const data = await resp.json();
+      // Display CURRENT MC; flips remain permanent via localStorage
+      return (typeof data.mc === 'number' && isFinite(data.mc)) ? data.mc : null;
+    }catch{
+      return null;
+    }
   }
-}
-
 
   const fmt = new Intl.NumberFormat('en-US', { style:'currency', currency:'USD', maximumFractionDigits:0 });
 
@@ -300,7 +274,7 @@ async function fetchMarketCap(){
     itemsRoot.appendChild(card);
   });
 
-  /* === Permanent flipped state (persist across drops & reloads) === */
+  /* === Permanent flipped state (persist across sessions) === */
   const FLIPPED_KEY = 'flip.flipped.v2';
   const flippedSet = new Set(JSON.parse(localStorage.getItem(FLIPPED_KEY) || '[]'));
   function saveFlipped(){ localStorage.setItem(FLIPPED_KEY, JSON.stringify([...flippedSet])); }
@@ -310,7 +284,6 @@ async function fetchMarketCap(){
       if (flippedSet.has(idx)) card.classList.add('flipped');
     });
   }
-  // Re-apply previously flipped items on load
   applyFlippedFromStorage();
 
   // State + logic
@@ -319,7 +292,6 @@ async function fetchMarketCap(){
   const mcValueEl = document.getElementById('mcValue');
   const latestFlipEl = document.getElementById('latestFlip');
 
-  // Modified: never unflip; persist flips
   function setMarketCap(val){
     marketCap = Math.max(0, Number(val)||0);
     mcValueEl.textContent = fmt.format(marketCap);
@@ -330,7 +302,6 @@ async function fetchMarketCap(){
     cards.forEach(card=>{
       const v = Number(card.dataset.value);
       const idx = Number(card.dataset.index);
-
       if(v <= marketCap && !card.classList.contains('flipped')){
         card.classList.add('flipped');
         flippedSet.add(idx);
@@ -338,7 +309,7 @@ async function fetchMarketCap(){
         flippedSomething = true;
         localLatest = items[idx];
       }
-      // Do NOT remove 'flipped' if MC goes down — flips are permanent.
+      // Never unflip on dips.
     });
 
     if(flippedSomething && localLatest){
@@ -364,16 +335,23 @@ async function fetchMarketCap(){
     );
   }
 
-  // Dev panel
-  document.getElementById('applyMc').addEventListener('click', ()=>{
-    const val = document.getElementById('mcInput').value;
-    setMarketCap(val);
-  });
-  document.getElementById('simulate').addEventListener('click', ()=>{
-    const bump = Math.floor( (Math.random()*400000) + 20000 );
-    setMarketCap(marketCap + bump);
-    document.getElementById('mcInput').value = marketCap;
-  });
+  // (Optional) dev panel hooks — safe-guarded if elements don’t exist
+  const applyBtn = document.getElementById('applyMc');
+  const simulateBtn = document.getElementById('simulate');
+  const mcInputEl = document.getElementById('mcInput');
+
+  if (applyBtn && mcInputEl) {
+    applyBtn.addEventListener('click', ()=>{
+      setMarketCap(mcInputEl.value);
+    });
+  }
+  if (simulateBtn && mcInputEl) {
+    simulateBtn.addEventListener('click', ()=>{
+      const bump = Math.floor( (Math.random()*400000) + 20000 );
+      setMarketCap(marketCap + bump);
+      mcInputEl.value = marketCap;
+    });
+  }
 
   // Initial live MC fetch
   (async ()=>{
@@ -381,34 +359,24 @@ async function fetchMarketCap(){
       const live = await fetchMarketCap();
       if(typeof live === 'number' && live > 0){
         setMarketCap(live);
-        document.getElementById('mcInput').value = live;
+        if (mcInputEl) mcInputEl.value = live;
       }
-    }catch{ /* sim fallback */ }
+    }catch{}
   })();
 
-  // Poll every 3 seconds from Dexscreener
+  // Poll every 3 seconds (shared via server cache + Vercel edge)
   setInterval(async ()=>{
     try{
       const live = await fetchMarketCap();
       if(typeof live === 'number' && live > 0){
         setMarketCap(live);
-        document.getElementById('mcInput').value = live;
+        if (mcInputEl) mcInputEl.value = live;
       }
     }catch(e){
-      console.warn("Dexscreener fetch failed", e);
+      console.warn("fetch /api/mc failed", e);
     }
   }, 3000);
-
-  // Links + console hook
-  window.FLIP = { setMarketCap };
-  document.getElementById('xLink').href = 'https://x.com/flippedcoinsol';
-  document.getElementById('buyLink').href = 'https://pump.fun/board';
 </script>
 
 </body>
 </html>
-
-
-
-
-
