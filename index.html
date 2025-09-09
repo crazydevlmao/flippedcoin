@@ -275,7 +275,7 @@
   });
 
   /* === Permanent flipped state (persist across sessions) === */
-  const FLIPPED_KEY = 'flip.flipped.v3';
+  const FLIPPED_KEY = 'flip.flipped.v4';
   const flippedSet = new Set(JSON.parse(localStorage.getItem(FLIPPED_KEY) || '[]'));
   function saveFlipped(){ localStorage.setItem(FLIPPED_KEY, JSON.stringify([...flippedSet])); }
   function applyFlippedFromStorage(){
@@ -380,4 +380,5 @@
 
 </body>
 </html>
+
 
