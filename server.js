@@ -16,8 +16,6 @@ const DEX_URL = (mint) => `https://api.dexscreener.com/latest/dex/tokens/${encod
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 12000); // 12s shared cache for all users
 // ===================
 
-
-
 // In-memory cache (global to this server instance)
 let cache = { mc: null, ath: 0, lastUpdated: 0, lastUpstreamOk: false };
 
@@ -50,6 +48,8 @@ async function updateCacheIfNeeded() {
 
 app.get("/api/mc", async (_req, res) => {
   await updateCacheIfNeeded();
+  // 🔥 Edge caching: Vercel will serve cached response for 12s, revalidate in background
+  res.set("Cache-Control", "public, max-age=0, s-maxage=12, stale-while-revalidate=30");
   res.json({ mc: cache.mc, ath: cache.ath, lastUpdated: cache.lastUpdated, ok: cache.lastUpstreamOk });
 });
 
@@ -64,4 +64,3 @@ app.listen(PORT, () => {
   console.log(`FLIPPED backend listening on http://localhost:${PORT}`);
   console.log(`Mint: ${FLIP_MINT} | Cache TTL: ${CACHE_TTL_MS}ms`);
 });
-
