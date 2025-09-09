@@ -10,7 +10,7 @@ app.use(cors());
 const PORT = process.env.PORT || 8787;
 
 // Set your coin address (mint) with the MINT env var when deploying
-const FLIP_MINT = "";
+const FLIP_MINT = "FN9VGyp9rANYEFxpBCuN88cAhNCYaovQJgTKmGGzpump";
 
 const DEX_URL = (mint) => `https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(mint)}`;
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 12000); // 12s shared cache for all users
@@ -64,6 +64,7 @@ app.listen(PORT, () => {
   console.log(`FLIPPED backend listening on http://localhost:${PORT}`);
   console.log(`Mint: ${FLIP_MINT} | Cache TTL: ${CACHE_TTL_MS}ms`);
 });
+
 
 
 
