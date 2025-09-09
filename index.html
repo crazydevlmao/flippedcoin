@@ -190,27 +190,18 @@
   // Fetch market cap via Dexscreener (token lookup)
   // Uses marketCap if available, otherwise falls back to FDV.
   // Returns an integer USD value or null if not yet indexed.
-  async function fetchMarketCap(){
-    try{
-      if(!FLIP_MINT || FLIP_MINT.startsWith("<ADD")) return null;
-
-      const resp = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(FLIP_MINT)}`);
-      const data = await resp.json();
-      const pairs = data?.pairs;
-      if (!Array.isArray(pairs) || pairs.length === 0) return null;
-
-      // Choose the most reliable pair (highest USD liquidity)
-      const best = pairs.slice().sort((a,b)=>((b?.liquidity?.usd||0) - (a?.liquidity?.usd||0)))[0];
-
-      // Dexscreener may provide both; prefer marketCap, else fdv
-      const mc = (typeof best?.marketCap === "number" ? best.marketCap : best?.fdv);
-
-      if (typeof mc !== "number" || !isFinite(mc)) return null;
-      return Math.round(mc);
-    } catch {
-      return null;
-    }
+async function fetchMarketCap(){
+  try{
+    const resp = await fetch('/api/mc', { cache: 'no-store' });
+    if(!resp.ok) return null;
+    const data = await resp.json();
+    // Prefer ATH so flips never unflip; fallback to MC
+    return (typeof data.ath === 'number' ? data.ath : data.mc) ?? null;
+  }catch{
+    return null;
   }
+}
+
 
   const fmt = new Intl.NumberFormat('en-US', { style:'currency', currency:'USD', maximumFractionDigits:0 });
 
@@ -429,3 +420,4 @@
 
 </body>
 </html>
+
