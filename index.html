@@ -248,7 +248,7 @@
 
   // Build ticker phrases
   const track = document.getElementById('tickerTrack');
-  const tickPhrases = Array(8).fill("ca: ......pump •");
+  const tickPhrases = Array(8).fill("ca: .....pump •");
   for(let i=0;i<2;i++) tickPhrases.forEach(p=>{
     const span=document.createElement('span'); span.className='pill'; span.textContent=p; track.appendChild(span);
   });
@@ -274,9 +274,27 @@
     itemsRoot.appendChild(card);
   });
 
-  /* === Permanent flipped state (persist across sessions) === */
+  /* === Permanent flipped state (persist across sessions) + migration === */
   const FLIPPED_KEY = 'flip.flipped.v6';
-  const flippedSet = new Set(JSON.parse(localStorage.getItem(FLIPPED_KEY) || '[]'));
+
+  function loadFlipped() {
+    const raw = JSON.parse(localStorage.getItem(FLIPPED_KEY) || '[]');
+    const idxs = [];
+    for (const x of raw) {
+      if (typeof x !== 'number') continue;
+      if (x >= 0 && x < items.length) {
+        // stored as index
+        idxs.push(x);
+      } else {
+        // looks like a value; map value->index if exists
+        const i = items.findIndex(it => it.v === x);
+        if (i !== -1) idxs.push(i);
+      }
+    }
+    return new Set(idxs);
+  }
+  const flippedSet = loadFlipped();
+
   function saveFlipped(){ localStorage.setItem(FLIPPED_KEY, JSON.stringify([...flippedSet])); }
   function applyFlippedFromStorage(){
     document.querySelectorAll('.card').forEach(card=>{
@@ -284,6 +302,18 @@
       if (flippedSet.has(idx)) card.classList.add('flipped');
     });
   }
+
+  function computeLatestFromState(){
+    let best = null, bestV = -1, bestIdx = -1;
+    document.querySelectorAll('.card.flipped').forEach(card=>{
+      const v = Number(card.dataset.value);
+      const idx = Number(card.dataset.index);
+      if (v > bestV) { bestV = v; bestIdx = idx; }
+    });
+    if (bestIdx >= 0) best = items[bestIdx];
+    return best;
+  }
+
   applyFlippedFromStorage();
 
   // State + logic
@@ -291,6 +321,10 @@
   let latest = null;
   const mcValueEl = document.getElementById('mcValue');
   const latestFlipEl = document.getElementById('latestFlip');
+
+  // initialize "latest" on load based on storage
+  const initLatest = computeLatestFromState();
+  if (initLatest) { latest = initLatest; updateLatest(initLatest); }
 
   function setMarketCap(val){
     marketCap = Math.max(0, Number(val)||0);
@@ -315,6 +349,13 @@
     if(flippedSomething && localLatest){
       latest = localLatest;
       updateLatest(localLatest);
+    } else {
+      // keep UI accurate even if no new flips this tick
+      const best = computeLatestFromState();
+      if (best && (!latest || best.v !== latest.v)) {
+        latest = best;
+        updateLatest(best);
+      }
     }
   }
 
@@ -353,7 +394,36 @@
     });
   }
 
-  // Initial live MC fetch
+  // --- Fixed 2s polling via your API (/api/mc) with overlap protection ---
+  let inflightController = null;
+
+  async function pollOnce() {
+    if (inflightController) {
+      // cancel previous request so newest wins
+      inflightController.abort();
+    }
+    inflightController = new AbortController();
+
+    try {
+      const resp = await fetch('/api/mc', {
+        cache: 'no-store',
+        signal: inflightController.signal,
+        keepalive: true
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (data && typeof data.mc === 'number' && data.mc > 0) {
+        setMarketCap(data.mc);
+        if (mcInputEl) mcInputEl.value = data.mc;
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') console.warn('poll error', e);
+    } finally {
+      inflightController = null;
+    }
+  }
+
+  // Initial fetch then steady 2s cadence
   (async ()=>{
     try{
       const live = await fetchMarketCap();
@@ -362,30 +432,11 @@
         if (mcInputEl) mcInputEl.value = live;
       }
     }catch{}
-  })();
 
-  // Poll every 3 seconds (shared via server cache + Vercel edge)
-  setInterval(async ()=>{
-    try{
-      const live = await fetchMarketCap();
-      if(typeof live === 'number' && live > 0){
-        setMarketCap(live);
-        if (mcInputEl) mcInputEl.value = live;
-      }
-    }catch(e){
-      console.warn("fetch /api/mc failed", e);
-    }
-  }, 3000);
+    // exact 2000ms interval, no jitter
+    setInterval(pollOnce, 2000);
+  })();
 </script>
 
 </body>
 </html>
-
-
-
-
-
-
-
-
-
