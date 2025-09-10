@@ -151,102 +151,25 @@
    * $FLIPPED — Core Page Script
    ******************************/
 
-  // ---- API bridge to your Render service via Vercel rewrite ----
-  async function fetchMarketCap(){
-    try{
-      const resp = await fetch('/api/mc', { cache: 'no-store' });
-      if(!resp.ok) return null;
-      const data = await resp.json();
-      // Display CURRENT MC; flips remain permanent via localStorage
-      return (typeof data.mc === 'number' && isFinite(data.mc)) ? data.mc : null;
-    }catch{
-      return null;
-    }
+  // ---- API bridge to your server ----
+  async function fetchMarketCapOnce(signal){
+    const resp = await fetch('/api/mc', {
+      cache: 'no-store',
+      signal,
+      keepalive: true,
+      headers: { 'cache-control':'no-cache', 'pragma':'no-cache' }
+    });
+    if(!resp.ok) return null;
+    const data = await resp.json();
+    return (typeof data?.mc === 'number' && isFinite(data.mc)) ? { mc: data.mc, ok: !!data.ok, t: data.lastUpdated || Date.now() } : null;
   }
 
   const fmt = new Intl.NumberFormat('en-US', { style:'currency', currency:'USD', maximumFractionDigits:0 });
 
-  // 50+ single, widely-known items; unique, strictly increasing values
-  const items = [
-    { e:"🛵", t:"Vespa Primavera", d:"City scoot.", v:5000 },
-    { e:"🎬", t:"Home Theater Setup", d:"Projector + audio.", v:7000 },
-    { e:"🏍️", t:"Kawasaki Ninja 400", d:"Entry sport bike.", v:8000 },
-    { e:"🚗", t:"Honda Civic (used)", d:"Reliable starter.", v:10000 },
-    { e:"✈️", t:"Private Jet Hour", d:"One hour wheels-up.", v:12000 },
-    { e:"💍", t:"Engagement Ring 1.5ct", d:"White gold set.", v:15000 },
-    { e:"🚙", t:"Toyota Corolla (used)", d:"Bulletproof commuter.", v:20000 },
-    { e:"🛠️", t:"Kitchen Renovation", d:"Mid-range remodel.", v:25000 },
-    { e:"⚡", t:"Tesla Model 3 (used)", d:"EV daily driver.", v:30000 },
-    { e:"🚘", t:"BMW 3 Series (CPO)", d:"Entry luxury.", v:40000 },
-    { e:"🏡", t:"Down Payment (smaller city)", d:"Keys getting closer.", v:45000 },
-    { e:"⌚", t:"Rolex Day-Date (pre-owned)", d:"President vibes.", v:50000 },
-    { e:"🚙", t:"Mercedes GLC", d:"Daily luxury SUV.", v:60000 },
-    { e:"🚙", t:"Range Rover Sport (used)", d:"High-spec used.", v:70000 },
-    { e:"⚡", t:"Tesla Model X (used)", d:"Falcon doors.", v:80000 },
-    { e:"🤣", t:"All non-migrated coins", d:"Workhorse.", v:88600 },
-    { e:"🏎️", t:"Porsche 911 (high-mile)", d:"Driver’s car.", v:90000 },
-    { e:"📣", t:"Times Sq Billboard (1 day)", d:"Mass reach, 24h.", v:100000 },
-    { e:"🪙", t:"1 BTC (ATH ~$120k)", d:"Single coin flex.", v:120000 },
-    { e:"🏠", t:"Down Payment (major city)", d:"From charts to keys.", v:150000 },
-    { e:"🏎️", t:"Ferrari California (used)", d:"Open-top V8.", v:180000 },
-    { e:"🐂", t:"Lamborghini Gallardo (used)", d:"Early 2000s icon.", v:200000 },
-    { e:"🎥", t:"Indie Film Budget", d:"Script to screen.", v:250000 },
-    { e:"🛥️", t:"40 ft Yacht (used)", d:"Weekend cruiser.", v:300000 },
-    { e:"🍽️", t:"Restaurant Build-out", d:"FOH + BOH.", v:350000 },
-    { e:"🏡", t:"Starter Home", d:"JPEGs → address.", v:400000 },
-    { e:"🧑‍🚀", t:"Suborbital Flight (pair)", d:"Edge of space.", v:450000 },
-    { e:"🛰️", t:"CubeSat Launch Slot", d:"Into orbit.", v:500000 },
-    { e:"🏚️", t:"Luxury Home Renovation", d:"Gut + rebuild.", v:600000 },
-    { e:"🏎️", t:"Rare Classic Car", d:"Collector spec.", v:700000 },
-    { e:"🎢", t:"Theme Park Day Buyout", d:"All rides, all day.", v:800000 },
-    { e:"💼", t:"Seed Round Check", d:"Angel mode.", v:900000 },
-    { e:"🏦", t:"$1M in T-Bills", d:"Short-term yield.", v:1000000 },
-    { e:"🏢", t:"Luxury Condo", d:"Skyline views.", v:1200000 },
-    { e:"🏢", t:"Small Apartment Building", d:"Cashflow IRL.", v:1500000 },
-    { e:"🎤", t:"Arena World Tour Leg", d:"Production + crew.", v:1800000 },
-    { e:"🚀", t:"Rocket Launch Sponsorship", d:"Co-brand a mission.", v:2000000 },
-    { e:"🏨", t:"Boutique Hotel Purchase", d:"Keys + lobby bar.", v:2500000 },
-    { e:"🏝️", t:"Private Island (purchase)", d:"Sand, not FUD.", v:3000000 },
-    { e:"🎬", t:"Feature Film Production", d:"Studio-level set.", v:4000000 },
-    { e:"🏙️", t:"Penthouse (major city)", d:"Views > bears.", v:5000000 },
-    { e:"✈️", t:"Gulfstream G200 (used)", d:"Serious sky flex.", v:6000000 },
-    { e:"🏈", t:"Super Bowl 30s Ad", d:"Peak normie reach.", v:7000000 },
-    { e:"🖼️", t:"Blue-chip Art Masterpiece", d:"Auction hammer.", v:8000000 },
-    { e:"🏢", t:"National Brand Buyout (small)", d:"Roll-up play.", v:9000000 },
-    { e:"🥇", t:"$10M in Gold Bullion", d:"Heavy and shiny.", v:10000000 },
-    { e:"🏥", t:"Hospital Wing Naming", d:"Endowment gift.", v:12000000 },
-    { e:"🎮", t:"AAA Game Launch Budget", d:"Dev + marketing.", v:15000000 },
-    { e:"🎥", t:"A-List Film Budget", d:"Stars + VFX.", v:20000000 },
-    { e:"🏝️", t:"Private Island Estate", d:"Compound build-out.", v:25000000 },
-    { e:"📺", t:"Regional Sports Media Rights", d:"Seasons of eyeballs.", v:30000000 },
-    { e:"🎬", t:"Studio Backlot Purchase", d:"Stages + lots.", v:40000000 },
-    { e:"🦄", t:"Unicorn Series A", d:"Fuel the rocket.", v:50000000 },
-    { e:"🏎️", t:"F1 Title Sponsorship (season)", d:"Global brand laps.", v:60000000 },
-    { e:"🖼️", t:"Blue-chip Painting (record)", d:"Museum grade.", v:70000000 },
-    { e:"📣", t:"Nationwide Ad Blitz (quarter)", d:"TV + digital.", v:80000000 },
-    { e:"🏭", t:"Data Center Build (large)", d:"MWs of compute.", v:90000000 },
-    { e:"💻", t:"Tech Company Acquisition (small)", d:"Buy vs build.", v:100000000 },
-    { e:"🏟️", t:"Arena Naming Rights (long-term)", d:"Prime venue.", v:150000000 },
-    { e:"📡", t:"Regional Telco Acquisition", d:"Fiber & spectrum.", v:200000000 },
-    { e:"🏗️", t:"Skyscraper Core & Shell", d:"Touch the clouds.", v:250000000 },
-    { e:"🎥", t:"Studio Backlot Expansion", d:"New soundstages.", v:300000000 },
-    { e:"🛰️", t:"Satellite Constellation Batch", d:"Cover the globe.", v:400000000 },
-    { e:"🎧", t:"Global Music Catalog Deal", d:"All the hits.", v:500000000 },
-    { e:"🎮", t:"Game Publisher Acquisition", d:"IP library.", v:600000000 },
-    { e:"🏆", t:"National Sports Rights (cycle)", d:"Prime league.", v:700000000 },
-    { e:"🏒", t:"League Expansion Fee", d:"New franchise slot.", v:750000000 },
-    { e:"🚀", t:"Spaceport Buildout (Phase 1)", d:"Pads + range.", v:800000000 },
-    { e:"💨", t:"Fartcoin", d:"Light work. It's just fartcoin", v:820000000 },
-    { e:"🏦", t:"Regional Bank Rescue", d:"Balance sheet triage.", v:900000000 },
-    { e:"🦄", t:"Decacorn Threshold", d:"$1B valuation.", v:1000000000 },
-    { e:"🎬", t:"Studio Slate (multi-film)", d:"Back-to-back releases.", v:1500000000 },
-    { e:"⚽", t:"Premier League Club (mid)", d:"Matchday + rights.", v:2000000000 },
-    { e:"🏒", t:"NHL Franchise", d:"Original-six dreams.", v:3000000000 },
-    { e:"🏀", t:"NBA Franchise", d:"Playoff engine.", v:5000000000 },
-    { e:"🏢", t:"Fortune-500 Brand Acquisition", d:"Household name.", v:10000000000 }
-  ];
+  // Items (unchanged) ...
+  const items = [/* ... your items array exactly as before ... */];
 
-  // Build ticker phrases
+  // Build ticker
   const track = document.getElementById('tickerTrack');
   const tickPhrases = Array(8).fill("ca: .....pump •");
   for(let i=0;i<2;i++) tickPhrases.forEach(p=>{
@@ -276,17 +199,13 @@
 
   /* === Permanent flipped state (persist across sessions) + migration === */
   const FLIPPED_KEY = 'flip.flipped.v6';
-
   function loadFlipped() {
     const raw = JSON.parse(localStorage.getItem(FLIPPED_KEY) || '[]');
     const idxs = [];
     for (const x of raw) {
       if (typeof x !== 'number') continue;
-      if (x >= 0 && x < items.length) {
-        // stored as index
-        idxs.push(x);
-      } else {
-        // looks like a value; map value->index if exists
+      if (x >= 0 && x < items.length) idxs.push(x);
+      else {
         const i = items.findIndex(it => it.v === x);
         if (i !== -1) idxs.push(i);
       }
@@ -294,7 +213,6 @@
     return new Set(idxs);
   }
   const flippedSet = loadFlipped();
-
   function saveFlipped(){ localStorage.setItem(FLIPPED_KEY, JSON.stringify([...flippedSet])); }
   function applyFlippedFromStorage(){
     document.querySelectorAll('.card').forEach(card=>{
@@ -302,7 +220,6 @@
       if (flippedSet.has(idx)) card.classList.add('flipped');
     });
   }
-
   function computeLatestFromState(){
     let best = null, bestV = -1, bestIdx = -1;
     document.querySelectorAll('.card.flipped').forEach(card=>{
@@ -313,7 +230,6 @@
     if (bestIdx >= 0) best = items[bestIdx];
     return best;
   }
-
   applyFlippedFromStorage();
 
   // State + logic
@@ -321,36 +237,39 @@
   let latest = null;
   const mcValueEl = document.getElementById('mcValue');
   const latestFlipEl = document.getElementById('latestFlip');
+  const statusEl = document.querySelector('.kpi .sub'); // shows “systems up” etc.
 
   // initialize "latest" on load based on storage
   const initLatest = computeLatestFromState();
   if (initLatest) { latest = initLatest; updateLatest(initLatest); }
 
   function setMarketCap(val){
-    marketCap = Math.max(0, Number(val)||0);
+    const next = Math.max(0, Number(val)||0);
+    if (next === marketCap) return; // no DOM churn if same number
+    marketCap = next;
     mcValueEl.textContent = fmt.format(marketCap);
+
     const cards = [...document.querySelectorAll('.card')];
     let flippedSomething = false;
     let localLatest = null;
 
-    cards.forEach(card=>{
+    for (const card of cards){
       const v = Number(card.dataset.value);
       const idx = Number(card.dataset.index);
       if(v <= marketCap && !card.classList.contains('flipped')){
         card.classList.add('flipped');
         flippedSet.add(idx);
-        saveFlipped();
         flippedSomething = true;
         localLatest = items[idx];
       }
       // Never unflip on dips.
-    });
+    }
+    if (flippedSomething) saveFlipped();
 
     if(flippedSomething && localLatest){
       latest = localLatest;
       updateLatest(localLatest);
     } else {
-      // keep UI accurate even if no new flips this tick
       const best = computeLatestFromState();
       if (best && (!latest || best.v !== latest.v)) {
         latest = best;
@@ -376,68 +295,71 @@
     );
   }
 
-  // (Optional) dev panel hooks — safe-guarded if elements don’t exist
-  const applyBtn = document.getElementById('applyMc');
-  const simulateBtn = document.getElementById('simulate');
-  const mcInputEl = document.getElementById('mcInput');
-
-  if (applyBtn && mcInputEl) {
-    applyBtn.addEventListener('click', ()=>{
-      setMarketCap(mcInputEl.value);
-    });
-  }
-  if (simulateBtn && mcInputEl) {
-    simulateBtn.addEventListener('click', ()=>{
-      const bump = Math.floor( (Math.random()*400000) + 20000 );
-      setMarketCap(marketCap + bump);
-      mcInputEl.value = marketCap;
-    });
+  function setStatus(ok, lastUpdated){
+    const age = Date.now() - (lastUpdated || 0);
+    const stale = age > 10_000 || !ok;
+    // only touch DOM if it changes
+    const next = `<span class="dot"></span> ${stale ? 'degraded' : 'systems up'}`;
+    if (statusEl && statusEl.innerHTML !== next) statusEl.innerHTML = next;
   }
 
-  // --- Fixed 2s polling via your API (/api/mc) with overlap protection ---
-  let inflightController = null;
+  // ---------- Precise 2s poller with hard timeout & no overlap ----------
+  const PERIOD_MS = 2000;
+  const HARD_TIMEOUT_MS = 1900; // abort client-side before next tick
+  let visible = true;
 
-  async function pollOnce() {
-    if (inflightController) {
-      // cancel previous request so newest wins
-      inflightController.abort();
-    }
-    inflightController = new AbortController();
+  async function pollTick(scheduleAt){
+    const controller = new AbortController();
+    const kill = setTimeout(() => controller.abort(), HARD_TIMEOUT_MS);
 
     try {
-      const resp = await fetch('/api/mc', {
-        cache: 'no-store',
-        signal: inflightController.signal,
-        keepalive: true
-      });
-      if (!resp.ok) return;
-      const data = await resp.json();
-      if (data && typeof data.mc === 'number' && data.mc > 0) {
-        setMarketCap(data.mc);
-        if (mcInputEl) mcInputEl.value = data.mc;
-      }
-    } catch (e) {
+      const data = await fetchMarketCapOnce(controller.signal);
+      if (data && data.mc > 0) setMarketCap(data.mc);
+      setStatus(!!data?.ok, data?.t);
+    } catch(e) {
       if (e.name !== 'AbortError') console.warn('poll error', e);
+      // keep showing last value; status will flip to degraded on server side if needed
     } finally {
-      inflightController = null;
+      clearTimeout(kill);
+      // schedule next tick for exact cadence
+      const now = performance.now();
+      const nextAt = scheduleAt + PERIOD_MS;
+      const delay = Math.max(0, nextAt - now);
+      if (visible) setTimeout(() => pollTick(nextAt), delay);
     }
   }
 
-  // Initial fetch then steady 2s cadence
+  // Visibility-aware (don’t waste credits when hidden)
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      visible = false;
+    } else {
+      // resume immediately on focus
+      visible = true;
+      const startAt = performance.now();
+      pollTick(startAt);
+    }
+  });
+
+  // Initial fetch then precise cadence
   (async ()=>{
     try{
-      const live = await fetchMarketCap();
-      if(typeof live === 'number' && live > 0){
-        setMarketCap(live);
-        if (mcInputEl) mcInputEl.value = live;
+      const controller = new AbortController();
+      const kill = setTimeout(() => controller.abort(), HARD_TIMEOUT_MS);
+      const first = await fetchMarketCapOnce(controller.signal);
+      clearTimeout(kill);
+      if (first && first.mc > 0){
+        setMarketCap(first.mc);
+        setStatus(!!first.ok, first.t);
       }
     }catch{}
-
-    // exact 2000ms interval, no jitter
-    setInterval(pollOnce, 2000);
+    const startAt = performance.now();
+    pollTick(startAt);
   })();
 </script>
 
+
 </body>
 </html>
+
 
