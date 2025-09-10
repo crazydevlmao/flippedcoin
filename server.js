@@ -9,8 +9,8 @@ app.use(cors());
 
 // ===== CONFIG (no envs) =====
 const PORT = process.env.PORT || 8787;
-const FLIP_MINT = ""; // <-- your mint
-const BIRDEYE_API_KEY = "";          // <-- your Birdeye key
+const FLIP_MINT = "2ZZAmj31NAsgJM2AThqNrDF8fqmcruMv8njUvxgmpump"; // <-- your mint
+const BIRDEYE_API_KEY = "c9d5e2f71899433fa32469947e2ac7ab";          // <-- your Birdeye key
 const CHAIN = "solana";
 
 // If you want to avoid mc:null while Birdeye indexes, keep this true.
@@ -226,5 +226,6 @@ app.listen(PORT, () => {
   console.log(`FLIPPED backend listening on http://localhost:${PORT}`);
   console.log(`Mint: ${FLIP_MINT} | Strict 2s refresh, ≤1 RPS`);
 });
+
 
 
