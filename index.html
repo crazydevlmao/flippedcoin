@@ -274,7 +274,7 @@
   });
 
   /* === Permanent flipped state (persist across sessions) + migration === */
-  const FLIPPED_KEY = 'flip.flipped.v6';
+  const FLIPPED_KEY = 'flip.flipped.v7';
 
   function loadFlipped() {
     const raw = JSON.parse(localStorage.getItem(FLIPPED_KEY) || '[]');
@@ -412,3 +412,4 @@
 
 </body>
 </html>
+
