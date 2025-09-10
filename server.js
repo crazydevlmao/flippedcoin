@@ -9,7 +9,7 @@ app.use(cors());
 
 // ===== CONFIG =====
 const PORT = process.env.PORT || 8787;
-const FLIP_MINT = ""; // put your mint here
+const FLIP_MINT = "3ULDGSJrPxxsZyC6QzcjrtyUztYf5fzdasHb3JFcpump"; // put your mint here
 const DEX_URL = (mint) =>
   `https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(mint)}`;
 
@@ -93,3 +93,4 @@ app.listen(PORT, () => {
   console.log(`FLIPPED backend listening on http://localhost:${PORT}`);
   console.log(`Mint: ${FLIP_MINT} | Cache TTL: ${CACHE_TTL_MS}ms`);
 });
+
