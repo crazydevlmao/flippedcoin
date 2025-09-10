@@ -1,4 +1,4 @@
-// server.js — Birdeye MC with 1 RPS cap, 429 backoff, adaptive cache
+// server.js — Birdeye MC with strict 2s refresh, ≤1 RPS, capped backoff
 import express from "express";
 import fetch from "node-fetch";
 import cors from "cors";
@@ -9,36 +9,24 @@ app.use(cors());
 
 // ===== CONFIG (no envs) =====
 const PORT = process.env.PORT || 8787;
-const FLIP_MINT = "3ULDGSJrPxxsZyC6QzcjrtyUztYf5fzdasHb3JFcpump";           // your token mint
-const BIRDEYE_API_KEY = "e06ad6d03b004fe4ad711cbb01d1a41c";    // your Birdeye API key
+const FLIP_MINT = "3ULDGSJrPxxsZyC6QzcjrtyUztYf5fzdasHb3JFcpump"; // your token mint
+const BIRDEYE_API_KEY = "e06ad6d03b004fe4ad711cbb01d1a41c";          // your Birdeye API key
 const CHAIN = "solana";
 
-// Cache behavior
-const ACTIVE_TTL_MS = 2000;   // 2s when MC is changing (feels live)
-const QUIET_TTL_MS  = 8000;   // 8s when MC flat (saves credits)
-const FLAT_THRESHOLD = 5;     // after 5 unchanged reads, treat as "quiet"
-
-// Birdeye upstream
-const UPSTREAM_TIMEOUT_MS = 3500; // abort after 3.5s
-const MIN_INTERVAL_MS = 1000;     // <= 1 request per second (your plan limit)
+// Strict cadence
+const TTL_MS = 2000;                 // serve cached for <=2s
+const UPSTREAM_TIMEOUT_MS = 2000;    // hard 2s abort (prevents long hangs)
+const MIN_INTERVAL_MS = 1000;        // ≤1 request/sec (plan limit)
+const MAX_BACKOFF_MS = 2000;         // cap Retry-After to 2s
 // ============================
 
-// Keep-alive agent for faster TCP reuse
 const httpsAgent = new https.Agent({ keepAlive: true });
 
 // In-memory cache & control
-let cache = {
-  mc: null,
-  ath: 0,
-  lastUpdated: 0,
-  ok: false
-};
-
-let unchangedCount = 0;
-let currentTtlMs = ACTIVE_TTL_MS;      // adaptive TTL starts "active"
-let inflight = null;                   // Promise for in-flight upstream fetch
-let lastUpstreamAt = 0;                // for 1 rps pacing
-let nextAllowedAt = 0;                 // for 429 Retry-After backoff
+let cache = { mc: null, ath: 0, lastUpdated: 0, ok: false };
+let inflight = null;                 // Promise for current upstream fetch
+let lastUpstreamAt = 0;              // last time we attempted upstream
+let nextAllowedAt = 0;               // honor 429 Retry-After (capped)
 
 function beHeaders() {
   return {
@@ -49,12 +37,11 @@ function beHeaders() {
   };
 }
 const okNum = (x) => typeof x === "number" && isFinite(x);
-const pick = (...xs) => xs.find(okNum);
+const pick = (...xs) => xs.find((n) => okNum(n));
 
-// ---- Birdeye calls (market-data -> overview -> price+overview supply) ----
+// ---------- Birdeye helpers ----------
 async function safeJson(resp) {
   if (!resp.ok) {
-    // Bubble up status for rate limit handling
     const err = new Error(`HTTP ${resp.status}`);
     err.status = resp.status;
     err.retryAfter = Number(resp.headers?.get?.("retry-after")) || null;
@@ -69,6 +56,7 @@ async function beMarketData(mint, signal) {
   const j = await safeJson(r);
   const d = j?.data ?? j;
   if (!d) throw new Error("no market-data");
+
   let mcUsd = pick(d.market_cap, d.marketCap, d.marketCapUsd, d.mc, d.market_cap_usd);
   if (!okNum(mcUsd)) {
     const price = pick(d.priceUsd, d.price_usd, d.price);
@@ -85,6 +73,7 @@ async function beOverview(mint, signal) {
   const j = await safeJson(r);
   const d = j?.data ?? j;
   if (!d) throw new Error("no token_overview");
+
   let mcUsd = pick(d.market_cap, d.marketCap, d.marketCapUsd, d.mc, d.market_cap_usd);
   if (!okNum(mcUsd)) {
     const price = pick(d.priceUsd, d.price_usd, d.price);
@@ -109,11 +98,12 @@ async function bePriceThenSupply(mint, signal) {
   const d = sj?.data ?? sj;
   const supply = pick(d?.circulating_supply, d?.circulatingSupply, d?.circSupply, d?.total_supply, d?.totalSupply, d?.supply);
   if (!okNum(supply)) throw new Error("no supply");
+
   return Math.round(price * supply);
 }
 
 async function fetchBirdeyeMC(mint) {
-  // Enforce 1 RPS & any Retry-After backoff
+  // Pace to ≤1 RPS and honor (capped) Retry-After
   const now = Date.now();
   const waitUntil = Math.max(lastUpstreamAt + MIN_INTERVAL_MS, nextAllowedAt);
   if (now < waitUntil) {
@@ -124,14 +114,13 @@ async function fetchBirdeyeMC(mint) {
   const t = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
 
   try {
-    // try market-data → overview → price+supply
     let mc;
     try {
       mc = await beMarketData(mint, controller.signal);
-    } catch (e1) {
+    } catch {
       try {
         mc = await beOverview(mint, controller.signal);
-      } catch (e2) {
+      } catch {
         mc = await bePriceThenSupply(mint, controller.signal);
       }
     }
@@ -140,11 +129,9 @@ async function fetchBirdeyeMC(mint) {
     return mc;
   } catch (err) {
     lastUpstreamAt = Date.now();
-
-    // 429 handling: respect Retry-After (seconds)
     if (err && err.status === 429) {
-      const ra = Number(err.retryAfter) || 1; // default backoff 1s
-      nextAllowedAt = Date.now() + ra * 1000;
+      const ra = Math.min((Number(err.retryAfter) || 1) * 1000, MAX_BACKOFF_MS);
+      nextAllowedAt = Date.now() + ra;
     }
     throw err;
   } finally {
@@ -152,16 +139,15 @@ async function fetchBirdeyeMC(mint) {
   }
 }
 
-// ---- Cache update with coalescing + adaptive TTL ----
+// ---------- Strict 2s cache/update ----------
 function cacheFresh() {
   const age = Date.now() - cache.lastUpdated;
-  return cache.mc !== null && age < currentTtlMs;
+  return cache.mc !== null && age < TTL_MS;
 }
 
 async function updateCache() {
   if (cacheFresh()) return;
 
-  // Coalesce concurrent calls
   if (inflight) {
     try { await inflight; } catch { /* ignore */ }
     return;
@@ -170,26 +156,14 @@ async function updateCache() {
   inflight = (async () => {
     try {
       const mc = await fetchBirdeyeMC(FLIP_MINT);
-      const prev = cache.mc;
       cache.mc = mc;
       cache.ath = Math.max(cache.ath || 0, mc);
       cache.ok = true;
-      cache.lastUpdated = Date.now();
-
-      // Adaptive TTL
-      if (okNum(prev) && prev === mc) {
-        unchangedCount++;
-        currentTtlMs = (unchangedCount >= FLAT_THRESHOLD) ? QUIET_TTL_MS : ACTIVE_TTL_MS;
-      } else {
-        unchangedCount = 0;
-        currentTtlMs = ACTIVE_TTL_MS;
-      }
     } catch {
-      cache.ok = false; // keep previous mc/ath
-      cache.lastUpdated = Date.now();
-      // After an error, temporarily act "quiet" to reduce pressure
-      currentTtlMs = Math.max(currentTtlMs, 4000);
+      // keep old mc/ath, but mark not-ok
+      cache.ok = false;
     } finally {
+      cache.lastUpdated = Date.now();
       inflight = null;
     }
   })();
@@ -199,8 +173,8 @@ async function updateCache() {
 
 app.get("/api/mc", async (_req, res) => {
   await updateCache();
-  // Users share cached result for a couple seconds (saves credits)
-  res.set("Cache-Control", "public, max-age=0, s-maxage=2, stale-while-revalidate=5");
+  // CDN shares result for 2s; browser won't cache (frontend uses no-store)
+  res.set("Cache-Control", "public, max-age=0, s-maxage=2, stale-while-revalidate=2");
   res.json({
     mc: cache.mc,
     ath: cache.ath,
@@ -214,9 +188,7 @@ app.get("/api/health", (_req, res) => {
     ok: true,
     mc: cache.mc,
     ath: cache.ath,
-    lastUpdated: cache.lastUpdated,
-    ttlMs: currentTtlMs,
-    unchangedCount
+    lastUpdated: cache.lastUpdated
   });
 });
 
@@ -224,5 +196,5 @@ app.use(express.static("./"));
 
 app.listen(PORT, () => {
   console.log(`FLIPPED backend listening on http://localhost:${PORT}`);
-  console.log(`Mint: ${FLIP_MINT} | Birdeye plan: 1 RPS / 60 RPM / 30k CUs/mo`);
+  console.log(`Mint: ${FLIP_MINT} | Strict 2s refresh, ≤1 RPS`);
 });
