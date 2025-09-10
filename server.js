@@ -1,4 +1,4 @@
-// server.js — Birdeye MC, strict 2s refresh, ≤1 RPS, with diagnostics
+// server.js — Strict 2s MC, Birdeye-only (no /public/price), optional Dexscreener fallback
 import express from "express";
 import fetch from "node-fetch";
 import cors from "cors";
@@ -10,14 +10,18 @@ app.use(cors());
 // ===== CONFIG (no envs) =====
 const PORT = process.env.PORT || 8787;
 const FLIP_MINT = "3ULDGSJrPxxsZyC6QzcjrtyUztYf5fzdasHb3JFcpump"; // <-- your mint
-const BIRDEYE_API_KEY = "e06ad6d03b004fe4ad711cbb01d1a41c";          // <-- your key
+const BIRDEYE_API_KEY = "e06ad6d03b004fe4ad711cbb01d1a41c";          // <-- your Birdeye key
 const CHAIN = "solana";
 
-// Strict cadence
+// If you absolutely want a last-resort to prevent mc:null, leave this true.
+// Set to false to disable all non-Birdeye fallback.
+const ENABLE_DEXSCREENER_FALLBACK = true;
+
+// Timing / pacing
 const TTL_MS = 2000;               // serve cached ≤ 2s old
-const UPSTREAM_TIMEOUT_MS = 2800;  // give Birdeye up to 2.8s before abort
-const MIN_INTERVAL_MS = 1000;      // ≤ 1 request/sec (your plan limit)
-const MAX_BACKOFF_MS = 2000;       // cap Retry-After to 2s
+const UPSTREAM_TIMEOUT_MS = 2800;  // give Birdeye up to 2.8s
+const MIN_INTERVAL_MS = 1000;      // ≤ 1 request/sec (your plan)
+const MAX_BACKOFF_MS = 2000;       // cap 429 Retry-After to 2s
 // ============================
 
 const httpsAgent = new https.Agent({ keepAlive: true });
@@ -32,6 +36,9 @@ let nextAllowedAt = 0;
 let lastError = null;
 let lastEndpoint = null;
 
+const okNum = (x) => typeof x === "number" && isFinite(x);
+const pick = (...xs) => xs.find((n) => okNum(n));
+
 function beHeaders() {
   return {
     accept: "application/json",
@@ -40,8 +47,6 @@ function beHeaders() {
     "user-agent": "flipped/1.0 (+mc)"
   };
 }
-const okNum = (x) => typeof x === "number" && isFinite(x);
-const pick = (...xs) => xs.find((n) => okNum(n));
 
 async function safeJson(resp, urlForLog) {
   if (!resp.ok) {
@@ -49,14 +54,14 @@ async function safeJson(resp, urlForLog) {
     const err = new Error(`HTTP ${resp.status}`);
     err.status = resp.status;
     err.retryAfter = Number(resp.headers?.get?.("retry-after")) || null;
-    err.body = bodyText.slice(0, 240);
+    err.body = bodyText.slice(0, 300);
     err.url = urlForLog;
     throw err;
   }
   return resp.json();
 }
 
-// ---------- Birdeye endpoints ----------
+/** ---- Birdeye primary ---- */
 async function beMarketData(mint, signal) {
   const url = `https://public-api.birdeye.so/defi/v3/token/market-data?address=${encodeURIComponent(mint)}&chain=${CHAIN}`;
   lastEndpoint = url;
@@ -75,6 +80,7 @@ async function beMarketData(mint, signal) {
   return Math.round(mcUsd);
 }
 
+/** ---- Birdeye fallback ---- */
 async function beOverview(mint, signal) {
   const url = `https://public-api.birdeye.so/defi/token_overview?address=${encodeURIComponent(mint)}&chain=${CHAIN}`;
   lastEndpoint = url;
@@ -93,28 +99,27 @@ async function beOverview(mint, signal) {
   return Math.round(mcUsd);
 }
 
-async function bePriceThenSupply(mint, signal) {
-  const priceUrl = `https://public-api.birdeye.so/public/price?address=${encodeURIComponent(mint)}&chain=${CHAIN}`;
-  lastEndpoint = priceUrl;
-  const pr = await fetch(priceUrl, { agent: httpsAgent, headers: beHeaders(), signal });
-  const pj = await safeJson(pr, priceUrl);
-  const pd = pj?.data ?? pj;
-  const price = pick(pd?.value, pd?.price, pd?.priceUsd);
-  if (!okNum(price)) throw new Error("no price");
-
-  const suppUrl = `https://public-api.birdeye.so/defi/token_overview?address=${encodeURIComponent(mint)}&chain=${CHAIN}`;
-  lastEndpoint = suppUrl;
-  const sr = await fetch(suppUrl, { agent: httpsAgent, headers: beHeaders(), signal });
-  const sj = await safeJson(sr, suppUrl);
-  const d = sj?.data ?? sj;
-  const supply = pick(d?.circulating_supply, d?.circulatingSupply, d?.circSupply, d?.total_supply, d?.totalSupply, d?.supply);
-  if (!okNum(supply)) throw new Error("no supply");
-
-  return Math.round(price * supply);
+/** ---- Dexscreener last resort (optional) ---- */
+async function dsMarketCap(mint, signal) {
+  const url = `https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(mint)}`;
+  const r = await fetch(url, { agent: httpsAgent, headers: { "user-agent": "flipped/1.0 (+mc)" }, signal });
+  if (!r.ok) throw new Error(`Dexscreener HTTP ${r.status}`);
+  const data = await r.json();
+  const pairs = data?.pairs;
+  if (!Array.isArray(pairs) || pairs.length === 0) throw new Error("Dexscreener no pairs");
+  let best = null, bestLiq = -1;
+  for (const p of pairs) {
+    const liq = p?.liquidity?.usd || 0;
+    if (liq > bestLiq) { bestLiq = liq; best = p; }
+  }
+  const mc = okNum(best?.marketCap) ? best.marketCap : best?.fdv;
+  if (!okNum(mc)) throw new Error("Dexscreener no MC/FDV");
+  return Math.round(mc);
 }
 
-async function fetchBirdeyeMC(mint) {
-  // Pace to ≤1 RPS & honor (capped) Retry-After
+/** ---- Pacing + fetch orchestration ---- */
+async function fetchUpstreamMC(mint) {
+  // ≤1 RPS and honor (capped) Retry-After
   const now = Date.now();
   const waitUntil = Math.max(lastUpstreamAt + MIN_INTERVAL_MS, nextAllowedAt);
   if (now < waitUntil) {
@@ -129,29 +134,28 @@ async function fetchBirdeyeMC(mint) {
     try {
       mc = await beMarketData(mint, controller.signal);
     } catch (e1) {
-      // log and fall back
       console.warn("[Birdeye market-data failed]", e1.status || "", e1.body || e1.message || "");
       try {
         mc = await beOverview(mint, controller.signal);
       } catch (e2) {
         console.warn("[Birdeye token_overview failed]", e2.status || "", e2.body || e2.message || "");
-        mc = await bePriceThenSupply(mint, controller.signal);
+        if (ENABLE_DEXSCREENER_FALLBACK) {
+          mc = await dsMarketCap(mint, controller.signal);
+        } else {
+          throw e2;
+        }
       }
     }
     lastUpstreamAt = Date.now();
-    nextAllowedAt = lastUpstreamAt; // clear backoff
+    nextAllowedAt = lastUpstreamAt;
     lastError = null;
     return mc;
   } catch (err) {
     lastUpstreamAt = Date.now();
-
-    // 429 handling
     if (err && err.status === 429) {
       const ra = Math.min((Number(err.retryAfter) || 1000), MAX_BACKOFF_MS);
       nextAllowedAt = Date.now() + ra;
     }
-
-    // record + log error
     lastError = {
       at: new Date().toISOString(),
       status: err?.status || null,
@@ -159,14 +163,13 @@ async function fetchBirdeyeMC(mint) {
       body: err?.body || null,
       url: err?.url || lastEndpoint || null
     };
-    console.error("[Birdeye error]", lastError);
+    console.error("[Upstream error]", lastError);
     throw err;
   } finally {
     clearTimeout(t);
   }
 }
 
-// ---------- Strict 2s cache/update ----------
 function cacheFresh() {
   const age = Date.now() - cache.lastUpdated;
   return cache.mc !== null && age < TTL_MS;
@@ -174,15 +177,11 @@ function cacheFresh() {
 
 async function updateCache() {
   if (cacheFresh()) return;
-
-  if (inflight) {
-    try { await inflight; } catch { /* ignore */ }
-    return;
-  }
+  if (inflight) { try { await inflight; } catch {} return; }
 
   inflight = (async () => {
     try {
-      const mc = await fetchBirdeyeMC(FLIP_MINT);
+      const mc = await fetchUpstreamMC(FLIP_MINT);
       cache.mc = mc;
       cache.ath = Math.max(cache.ath || 0, mc);
       cache.ok = true;
@@ -200,12 +199,7 @@ async function updateCache() {
 app.get("/api/mc", async (_req, res) => {
   await updateCache();
   res.set("Cache-Control", "public, max-age=0, s-maxage=2, stale-while-revalidate=2");
-  res.json({
-    mc: cache.mc,
-    ath: cache.ath,
-    lastUpdated: cache.lastUpdated,
-    ok: cache.ok
-  });
+  res.json({ mc: cache.mc, ath: cache.ath, lastUpdated: cache.lastUpdated, ok: cache.ok });
 });
 
 app.get("/api/health", async (_req, res) => {
@@ -215,11 +209,11 @@ app.get("/api/health", async (_req, res) => {
     ath: cache.ath,
     lastUpdated: cache.lastUpdated,
     lastEndpoint,
-    lastError
+    lastError,
+    source: cache.ok ? (lastEndpoint?.includes("dexscreener") ? "dexscreener" : "birdeye") : "unknown"
   });
 });
 
-// Serve your static site (index.html in same folder)
 app.use(express.static("./"));
 
 app.listen(PORT, () => {
