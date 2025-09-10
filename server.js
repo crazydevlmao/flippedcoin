@@ -1,4 +1,4 @@
-// server.js — Birdeye MC with strict 2s refresh, ≤1 RPS, capped backoff
+// server.js — Birdeye MC, strict 2s refresh, ≤1 RPS, with diagnostics
 import express from "express";
 import fetch from "node-fetch";
 import cors from "cors";
@@ -9,24 +9,28 @@ app.use(cors());
 
 // ===== CONFIG (no envs) =====
 const PORT = process.env.PORT || 8787;
-const FLIP_MINT = "3ULDGSJrPxxsZyC6QzcjrtyUztYf5fzdasHb3JFcpump"; // your token mint
-const BIRDEYE_API_KEY = "e06ad6d03b004fe4ad711cbb01d1a41c";          // your Birdeye API key
+const FLIP_MINT = "3ULDGSJrPxxsZyC6QzcjrtyUztYf5fzdasHb3JFcpump"; // <-- your mint
+const BIRDEYE_API_KEY = "e06ad6d03b004fe4ad711cbb01d1a41c";          // <-- your key
 const CHAIN = "solana";
 
 // Strict cadence
-const TTL_MS = 2000;                 // serve cached for <=2s
-const UPSTREAM_TIMEOUT_MS = 2000;    // hard 2s abort (prevents long hangs)
-const MIN_INTERVAL_MS = 1000;        // ≤1 request/sec (plan limit)
-const MAX_BACKOFF_MS = 2000;         // cap Retry-After to 2s
+const TTL_MS = 2000;               // serve cached ≤ 2s old
+const UPSTREAM_TIMEOUT_MS = 2800;  // give Birdeye up to 2.8s before abort
+const MIN_INTERVAL_MS = 1000;      // ≤ 1 request/sec (your plan limit)
+const MAX_BACKOFF_MS = 2000;       // cap Retry-After to 2s
 // ============================
 
 const httpsAgent = new https.Agent({ keepAlive: true });
 
 // In-memory cache & control
 let cache = { mc: null, ath: 0, lastUpdated: 0, ok: false };
-let inflight = null;                 // Promise for current upstream fetch
-let lastUpstreamAt = 0;              // last time we attempted upstream
-let nextAllowedAt = 0;               // honor 429 Retry-After (capped)
+let inflight = null;
+let lastUpstreamAt = 0;
+let nextAllowedAt = 0;
+
+// Diagnostics
+let lastError = null;
+let lastEndpoint = null;
 
 function beHeaders() {
   return {
@@ -39,21 +43,25 @@ function beHeaders() {
 const okNum = (x) => typeof x === "number" && isFinite(x);
 const pick = (...xs) => xs.find((n) => okNum(n));
 
-// ---------- Birdeye helpers ----------
-async function safeJson(resp) {
+async function safeJson(resp, urlForLog) {
   if (!resp.ok) {
+    const bodyText = await resp.text().catch(() => "");
     const err = new Error(`HTTP ${resp.status}`);
     err.status = resp.status;
     err.retryAfter = Number(resp.headers?.get?.("retry-after")) || null;
+    err.body = bodyText.slice(0, 240);
+    err.url = urlForLog;
     throw err;
   }
   return resp.json();
 }
 
+// ---------- Birdeye endpoints ----------
 async function beMarketData(mint, signal) {
   const url = `https://public-api.birdeye.so/defi/v3/token/market-data?address=${encodeURIComponent(mint)}&chain=${CHAIN}`;
+  lastEndpoint = url;
   const r = await fetch(url, { agent: httpsAgent, headers: beHeaders(), signal });
-  const j = await safeJson(r);
+  const j = await safeJson(r, url);
   const d = j?.data ?? j;
   if (!d) throw new Error("no market-data");
 
@@ -69,8 +77,9 @@ async function beMarketData(mint, signal) {
 
 async function beOverview(mint, signal) {
   const url = `https://public-api.birdeye.so/defi/token_overview?address=${encodeURIComponent(mint)}&chain=${CHAIN}`;
+  lastEndpoint = url;
   const r = await fetch(url, { agent: httpsAgent, headers: beHeaders(), signal });
-  const j = await safeJson(r);
+  const j = await safeJson(r, url);
   const d = j?.data ?? j;
   if (!d) throw new Error("no token_overview");
 
@@ -86,15 +95,17 @@ async function beOverview(mint, signal) {
 
 async function bePriceThenSupply(mint, signal) {
   const priceUrl = `https://public-api.birdeye.so/public/price?address=${encodeURIComponent(mint)}&chain=${CHAIN}`;
+  lastEndpoint = priceUrl;
   const pr = await fetch(priceUrl, { agent: httpsAgent, headers: beHeaders(), signal });
-  const pj = await safeJson(pr);
+  const pj = await safeJson(pr, priceUrl);
   const pd = pj?.data ?? pj;
   const price = pick(pd?.value, pd?.price, pd?.priceUsd);
   if (!okNum(price)) throw new Error("no price");
 
   const suppUrl = `https://public-api.birdeye.so/defi/token_overview?address=${encodeURIComponent(mint)}&chain=${CHAIN}`;
+  lastEndpoint = suppUrl;
   const sr = await fetch(suppUrl, { agent: httpsAgent, headers: beHeaders(), signal });
-  const sj = await safeJson(sr);
+  const sj = await safeJson(sr, suppUrl);
   const d = sj?.data ?? sj;
   const supply = pick(d?.circulating_supply, d?.circulatingSupply, d?.circSupply, d?.total_supply, d?.totalSupply, d?.supply);
   if (!okNum(supply)) throw new Error("no supply");
@@ -103,7 +114,7 @@ async function bePriceThenSupply(mint, signal) {
 }
 
 async function fetchBirdeyeMC(mint) {
-  // Pace to ≤1 RPS and honor (capped) Retry-After
+  // Pace to ≤1 RPS & honor (capped) Retry-After
   const now = Date.now();
   const waitUntil = Math.max(lastUpstreamAt + MIN_INTERVAL_MS, nextAllowedAt);
   if (now < waitUntil) {
@@ -117,22 +128,38 @@ async function fetchBirdeyeMC(mint) {
     let mc;
     try {
       mc = await beMarketData(mint, controller.signal);
-    } catch {
+    } catch (e1) {
+      // log and fall back
+      console.warn("[Birdeye market-data failed]", e1.status || "", e1.body || e1.message || "");
       try {
         mc = await beOverview(mint, controller.signal);
-      } catch {
+      } catch (e2) {
+        console.warn("[Birdeye token_overview failed]", e2.status || "", e2.body || e2.message || "");
         mc = await bePriceThenSupply(mint, controller.signal);
       }
     }
     lastUpstreamAt = Date.now();
-    nextAllowedAt = lastUpstreamAt; // cleared
+    nextAllowedAt = lastUpstreamAt; // clear backoff
+    lastError = null;
     return mc;
   } catch (err) {
     lastUpstreamAt = Date.now();
+
+    // 429 handling
     if (err && err.status === 429) {
-      const ra = Math.min((Number(err.retryAfter) || 1) * 1000, MAX_BACKOFF_MS);
+      const ra = Math.min((Number(err.retryAfter) || 1000), MAX_BACKOFF_MS);
       nextAllowedAt = Date.now() + ra;
     }
+
+    // record + log error
+    lastError = {
+      at: new Date().toISOString(),
+      status: err?.status || null,
+      message: err?.message || "upstream error",
+      body: err?.body || null,
+      url: err?.url || lastEndpoint || null
+    };
+    console.error("[Birdeye error]", lastError);
     throw err;
   } finally {
     clearTimeout(t);
@@ -160,8 +187,7 @@ async function updateCache() {
       cache.ath = Math.max(cache.ath || 0, mc);
       cache.ok = true;
     } catch {
-      // keep old mc/ath, but mark not-ok
-      cache.ok = false;
+      cache.ok = false; // keep old value
     } finally {
       cache.lastUpdated = Date.now();
       inflight = null;
@@ -173,7 +199,6 @@ async function updateCache() {
 
 app.get("/api/mc", async (_req, res) => {
   await updateCache();
-  // CDN shares result for 2s; browser won't cache (frontend uses no-store)
   res.set("Cache-Control", "public, max-age=0, s-maxage=2, stale-while-revalidate=2");
   res.json({
     mc: cache.mc,
@@ -183,15 +208,18 @@ app.get("/api/mc", async (_req, res) => {
   });
 });
 
-app.get("/api/health", (_req, res) => {
+app.get("/api/health", async (_req, res) => {
   res.json({
     ok: true,
     mc: cache.mc,
     ath: cache.ath,
-    lastUpdated: cache.lastUpdated
+    lastUpdated: cache.lastUpdated,
+    lastEndpoint,
+    lastError
   });
 });
 
+// Serve your static site (index.html in same folder)
 app.use(express.static("./"));
 
 app.listen(PORT, () => {
