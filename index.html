@@ -118,7 +118,7 @@
     <div class="topbar">
       <div class="btns">
         <a class="btn x" href="https://x.com/flippedcoinsol" id="xLink" aria-label="Go to X"><span class="shine"></span> X</a>
-        <a class="btn buy" href="https://pump.fun/coin/2ZZAmj31NAsgJM2AThqNrDF8fqmcruMv8njUvxgmpump" id="buyLink" aria-label="Buy $FLIP"><span class="shine"></span> BUY</a>
+        <a class="btn buy" href="https://pump.fun/coin/" id="buyLink" aria-label="Buy $FLIP"><span class="shine"></span> BUY</a>
       </div>
     </div>
 
@@ -247,7 +247,7 @@
 
   // Build ticker phrases
   const track = document.getElementById('tickerTrack');
-  const tickPhrases = Array(8).fill("ca: 2ZZAmj31NAsgJM2AThqNrDF8fqmcruMv8njUvxgmpump •");
+  const tickPhrases = Array(8).fill("ca: pump •");
   for(let i=0;i<2;i++) tickPhrases.forEach(p=>{
     const span=document.createElement('span'); span.className='pill'; span.textContent=p; track.appendChild(span);
   });
@@ -412,5 +412,6 @@
 
 </body>
 </html>
+
 
 
