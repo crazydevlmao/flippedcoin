@@ -9,7 +9,7 @@ app.use(cors());
 
 // ===== CONFIG (no envs) =====
 const PORT = process.env.PORT || 8787;
-const FLIP_MINT = "GvbeE3xrQMHzCBoikm4816VQsrUZAC7owbJma5Ffpump"; // <-- your mint
+const FLIP_MINT = ""; // <-- your mint
 const BIRDEYE_API_KEY = "c9d5e2f71899433fa32469947e2ac7ab";          // <-- your Birdeye key
 const CHAIN = "solana";
 
@@ -226,6 +226,7 @@ app.listen(PORT, () => {
   console.log(`FLIPPED backend listening on http://localhost:${PORT}`);
   console.log(`Mint: ${FLIP_MINT} | Strict 2s refresh, ≤1 RPS`);
 });
+
 
 
 
