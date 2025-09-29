@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>$FLIP — Flip Everything</title>
+  <title>$FLIPPED — Flip Everything</title>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <style>
     :root{
@@ -247,7 +247,7 @@
 
   // Build ticker phrases
   const track = document.getElementById('tickerTrack');
-  const tickPhrases = Array(8).fill("ca: EB6pqpa46wSkmMZo5pisJzifXkGtsaL6GLYyLL7qpump •");
+  const tickPhrases = Array(8).fill("ca: ...pump •");
   for(let i=0;i<2;i++) tickPhrases.forEach(p=>{
     const span=document.createElement('span'); span.className='pill'; span.textContent=p; track.appendChild(span);
   });
@@ -412,6 +412,7 @@
 
 </body>
 </html>
+
 
 
 
