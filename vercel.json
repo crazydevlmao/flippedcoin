@@ -2,7 +2,8 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://flippedcoin.onrender.com/api/:path*"
+      "destination": "https://flippedcoin-91l5.onrender.com/api/:path*"
     }
   ]
 }
+
