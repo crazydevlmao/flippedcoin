@@ -52,7 +52,13 @@
     .btn:hover .shine{opacity:.6}
     @keyframes spin{to{transform:rotate(360deg)}}
 
-    .kpis{display:grid; grid-template-columns: 1fr minmax(260px, 420px); gap:16px; align-items:stretch}
+    .kpis{
+  display:grid;
+  grid-template-columns: 1.1fr 1fr 1fr; /* three equal-ish columns */
+  gap:16px;
+  align-items:stretch;
+}
+
     .kpi, .latest{
       position:relative; background:linear-gradient(180deg, rgba(25,29,36,.9), rgba(16,19,24,.9));
       border:1px solid var(--grid); border-radius:16px; padding:18px 18px 16px; overflow:hidden;
@@ -105,6 +111,11 @@
     .pill{ font-size:.8rem; letter-spacing:.1em; color:var(--muted) }
     .dot{ width:6px; height:6px; background:var(--neon); border-radius:999px; display:inline-block; box-shadow:0 0 10px var(--neon) }
     @keyframes marquee{ from{ transform:translateX(0) } to{ transform:translateX(-50%) } }
+    @keyframes flicker {
+  0%,100% { filter: drop-shadow(0 0 3px rgba(255,120,0,.8)); transform:scale(1); }
+  50% { filter: drop-shadow(0 0 8px rgba(255,180,0,1)); transform:scale(1.15); }
+}
+.fire-icon{display:inline-block;margin-right:4px;animation:flicker .6s infinite ease-in-out alternate;}
   </style>
 </head>
 <body>
@@ -123,25 +134,35 @@
     </div>
 
     <div class="kpis">
-      <div class="kpi">
-        <div class="runner"></div>
-        <div class="label">$¥ Market Cap</div>
-        <div class="value" id="mcValue">$0</div>
-        <div class="sub"><span class="dot"></span> systems up</div>
+  <div class="kpi">
+    <div class="runner"></div>
+    <div class="label">$¥ Market Cap</div>
+    <div class="value" id="mcValue">$0</div>
+    <div class="sub"><span class="dot"></span> systems up</div>
+  </div>
+
+  <!-- ✅ new burned Yuan block -->
+  <div class="kpi">
+    <div class="runner"></div>
+    <div class="label">Total $¥ Burned</div>
+    <div class="value" id="burnedValue"><span class="fire-icon">🔥</span>0 $¥</div>
+    <div class="sub">Tokens permanently removed</div>
+  </div>
+
+  <div class="latest">
+    <div class="runner"></div>
+    <div class="label">Highest Flipped</div>
+    <div class="itemline" id="latestFlip">
+      <div class="imgph">🌀</div>
+      <div>
+        <div class="title">Nothing… yet</div>
+        <div class="sub">When MC ≥ item value, we flip it automatically.</div>
       </div>
-      <div class="latest">
-        <div class="runner"></div>
-        <div class="label">Highest Flipped</div>
-        <div class="itemline" id="latestFlip">
-          <div class="imgph">🌀</div>
-          <div>
-            <div class="title">Nothing… yet</div>
-            <div class="sub">When MC ≥ item value, we flip it automatically.</div>
-          </div>
-          <div class="cash">$0</div>
-        </div>
-      </div>
+      <div class="cash">$0</div>
     </div>
+  </div>
+</div>
+
 
     <div class="items" id="items"></div>
   </div>
@@ -409,11 +430,26 @@
     }catch{}
     setInterval(pollOnce, 2000);
   })();
+  const burnedValueEl=document.getElementById('burnedValue');
+const fmtCompact=new Intl.NumberFormat('en-US',{notation:'compact'});
+const oldPoll=pollOnce;
+pollOnce=async function(){
+  if(inflightController)inflightController.abort();
+  inflightController=new AbortController();
+  try{
+    const resp=await fetch('/api/mc',{cache:'no-store',signal:inflightController.signal,keepalive:true});
+    if(!resp.ok)return;
+    const data=await resp.json();
+    if(data&&typeof data.mc==='number'&&data.mc>0)setMarketCap(data.mc);
+    if(data&&typeof data.burned==='number'){
+      burnedValueEl.innerHTML=`<span class="fire-icon">🔥</span>${fmtCompact.format(data.burned)} $¥`;
+    }
+  }catch{}finally{inflightController=null;}
+};
 </script>
 
 </body>
 </html>
-
 
 
 
