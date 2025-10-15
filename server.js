@@ -125,30 +125,35 @@ async function dsMarketCap(mint, signal) {
   return { mc: Math.round(mc), source: "dexscreener" };
 }
 
-/** ---- Get total supply & burned (PumpFun-specific) ---- */
+/** ---- Get total supply & burned (accurate PumpFun fix) ---- */
 async function getSupplyAndBurned(mint) {
   try {
-    // Use Birdeye for circulating supply if possible
-    const url = `https://public-api.birdeye.so/defi/token_overview?address=${mint}&chain=${CHAIN}`;
-    const resp = await fetch(url, { headers: beHeaders(), agent: httpsAgent });
-    const j = await resp.json();
-    const d = j?.data ?? {};
-
-    // Hard-set PumpFun total supply to 1 billion
     const total = 1_000_000_000;
 
-    // Prefer Birdeye’s circulating; fallback to total if missing
-    const circ = Number(d.circulating_supply || d.circulatingSupply || 0) || total;
+    // Pull latest supply info from Birdeye
+    const overviewURL = `https://public-api.birdeye.so/defi/token_overview?address=${mint}&chain=${CHAIN}`;
+    const marketURL   = `https://public-api.birdeye.so/defi/v3/token/market-data?address=${mint}&chain=${CHAIN}`;
 
-    // Burned = difference
+    const [overviewResp, marketResp] = await Promise.all([
+      fetch(overviewURL, { headers: beHeaders(), agent: httpsAgent }).then(r => r.json()).catch(() => ({})),
+      fetch(marketURL, { headers: beHeaders(), agent: httpsAgent }).then(r => r.json()).catch(() => ({}))
+    ]);
+
+    const o = overviewResp?.data ?? {};
+    const m = marketResp?.data ?? {};
+
+    const circ =
+      Number(o.current_supply || o.circulating_supply || m.circulating_supply || 0) ||
+      total;
+
     const burned = total > circ ? total - circ : 0;
-
     return { total, burned, circulating: circ };
   } catch (e) {
     console.warn("[burn fetch failed]", e.message);
     return { total: 1_000_000_000, burned: 0, circulating: 1_000_000_000 };
   }
 }
+
 
 
 
@@ -275,5 +280,6 @@ app.listen(PORT, () => {
   console.log(`FLIPPED backend listening on http://localhost:${PORT}`);
   console.log(`Mint: ${FLIP_MINT} | Strict 2s refresh, ≤1 RPS`);
 });
+
 
 
