@@ -125,26 +125,24 @@ async function dsMarketCap(mint, signal) {
   return { mc: Math.round(mc), source: "dexscreener" };
 }
 
-/** ---- Get total supply & burned (accurate PumpFun fix) ---- */
+/** ---- Get total supply & burned (Birdeye fast + accurate) ---- */
 async function getSupplyAndBurned(mint) {
   try {
-    const total = 1_000_000_000;
+    const total = 1_000_000_000; // PumpFun fixed total
+    const url = `https://public-api.birdeye.so/defi/v3/token/market-data?address=${mint}&chain=${CHAIN}`;
 
-    // Pull latest supply info from Birdeye
-    const overviewURL = `https://public-api.birdeye.so/defi/token_overview?address=${mint}&chain=${CHAIN}`;
-    const marketURL   = `https://public-api.birdeye.so/defi/v3/token/market-data?address=${mint}&chain=${CHAIN}`;
+    const r = await fetch(url, { headers: beHeaders(), agent: httpsAgent });
+    const j = await r.json();
+    const d = j?.data ?? {};
 
-    const [overviewResp, marketResp] = await Promise.all([
-      fetch(overviewURL, { headers: beHeaders(), agent: httpsAgent }).then(r => r.json()).catch(() => ({})),
-      fetch(marketURL, { headers: beHeaders(), agent: httpsAgent }).then(r => r.json()).catch(() => ({}))
-    ]);
-
-    const o = overviewResp?.data ?? {};
-    const m = marketResp?.data ?? {};
-
-    const circ =
-      Number(o.current_supply || o.circulating_supply || m.circulating_supply || 0) ||
-      total;
+    // Prefer the freshest circulating field
+    const circ = Number(
+      d.circulating_supply ||
+      d.circulatingSupply ||
+      d.circSupply ||
+      d.supply ||
+      0
+    ) || total;
 
     const burned = total > circ ? total - circ : 0;
     return { total, burned, circulating: circ };
@@ -280,6 +278,7 @@ app.listen(PORT, () => {
   console.log(`FLIPPED backend listening on http://localhost:${PORT}`);
   console.log(`Mint: ${FLIP_MINT} | Strict 2s refresh, ≤1 RPS`);
 });
+
 
 
 
