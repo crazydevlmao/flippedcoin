@@ -125,45 +125,43 @@ async function dsMarketCap(mint, signal) {
   return { mc: Math.round(mc), source: "dexscreener" };
 }
 
-/** ---- Get total supply & burned ---- */
+/** ---- Get total supply & burned (corrected) ---- */
 async function getSupplyAndBurned(mint) {
   try {
-    const body = { jsonrpc: "2.0", id: 1, method: "getTokenSupply", params: [mint] };
-    const resp = await fetch(RPC_URL, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body), agent: httpsAgent
-    });
+    // Try Birdeye first for accurate total/circulating
+    const url = `https://public-api.birdeye.so/defi/token_overview?address=${mint}&chain=${CHAIN}`;
+    const resp = await fetch(url, { headers: beHeaders(), agent: httpsAgent });
     const j = await resp.json();
-    const total = Number(j?.result?.value?.uiAmount || 0);
+    const d = j?.data ?? {};
+    const total = Number(d.total_supply || d.totalSupply || 0);
+    const circ = Number(d.circulating_supply || d.circulatingSupply || 0);
+    const burned = total > circ ? total - circ : 0;
 
-    let burned = 0;
-    for (const addr of BURN_ADDRESSES) {
-      const balBody = {
-        jsonrpc: "2.0", id: 1, method: "getTokenAccountsByOwner",
-        params: [
-          addr,
-          { mint, programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
-          { encoding: "jsonParsed" }
-        ]
-      };
-      const r = await fetch(RPC_URL, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(balBody), agent: httpsAgent
+    // ✅ Fallback to RPC if Birdeye fails
+    if (!total || !circ) {
+      const rpcResp = await fetch(RPC_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "getTokenSupply",
+          params: [mint],
+        }),
+        agent: httpsAgent,
       });
-      const jj = await r.json();
-      const accts = jj?.result?.value || [];
-      for (const a of accts) {
-        burned += Number(a?.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0);
-      }
+      const j2 = await rpcResp.json();
+      const rpcTotal = Number(j2?.result?.value?.uiAmount || 0);
+      return { total: rpcTotal, burned: 0, circulating: rpcTotal };
     }
 
-    const circ = Math.max(total - burned, 0);
     return { total, burned, circulating: circ };
   } catch (e) {
     console.warn("[burn fetch failed]", e.message);
     return { total: 0, burned: 0, circulating: 0 };
   }
 }
+
 
 /** ---- Pacing + fetch orchestration ---- */
 async function fetchUpstream(mint) {
@@ -288,3 +286,4 @@ app.listen(PORT, () => {
   console.log(`FLIPPED backend listening on http://localhost:${PORT}`);
   console.log(`Mint: ${FLIP_MINT} | Strict 2s refresh, ≤1 RPS`);
 });
+
