@@ -441,15 +441,21 @@ pollOnce=async function(){
     if(!resp.ok)return;
     const data=await resp.json();
     if(data&&typeof data.mc==='number'&&data.mc>0)setMarketCap(data.mc);
-    if(data&&typeof data.burned==='number'){
-      burnedValueEl.innerHTML=`<span class="fire-icon">🔥</span>${fmtCompact.format(data.burned)} $¥`;
-    }
+    // Manual override (e.g., match Solscan circulating)
+const manualBurned = 54718276; // <== set your custom burned value here
+
+if(data){
+  const burnedToShow = manualBurned || data.burned || 0;
+  burnedValueEl.innerHTML = `<span class="fire-icon">🔥</span>${fmtCompact.format(burnedToShow)} $¥`;
+}
+
   }catch{}finally{inflightController=null;}
 };
 </script>
 
 </body>
 </html>
+
 
 
 
