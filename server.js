@@ -125,42 +125,31 @@ async function dsMarketCap(mint, signal) {
   return { mc: Math.round(mc), source: "dexscreener" };
 }
 
-/** ---- Get total supply & burned (corrected) ---- */
+/** ---- Get total supply & burned (PumpFun-specific) ---- */
 async function getSupplyAndBurned(mint) {
   try {
-    // Try Birdeye first for accurate total/circulating
+    // Use Birdeye for circulating supply if possible
     const url = `https://public-api.birdeye.so/defi/token_overview?address=${mint}&chain=${CHAIN}`;
     const resp = await fetch(url, { headers: beHeaders(), agent: httpsAgent });
     const j = await resp.json();
     const d = j?.data ?? {};
-    const total = Number(d.total_supply || d.totalSupply || 0);
-    const circ = Number(d.circulating_supply || d.circulatingSupply || 0);
-    const burned = total > circ ? total - circ : 0;
 
-    // ✅ Fallback to RPC if Birdeye fails
-    if (!total || !circ) {
-      const rpcResp = await fetch(RPC_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "getTokenSupply",
-          params: [mint],
-        }),
-        agent: httpsAgent,
-      });
-      const j2 = await rpcResp.json();
-      const rpcTotal = Number(j2?.result?.value?.uiAmount || 0);
-      return { total: rpcTotal, burned: 0, circulating: rpcTotal };
-    }
+    // Hard-set PumpFun total supply to 1 billion
+    const total = 1_000_000_000;
+
+    // Prefer Birdeye’s circulating; fallback to total if missing
+    const circ = Number(d.circulating_supply || d.circulatingSupply || 0) || total;
+
+    // Burned = difference
+    const burned = total > circ ? total - circ : 0;
 
     return { total, burned, circulating: circ };
   } catch (e) {
     console.warn("[burn fetch failed]", e.message);
-    return { total: 0, burned: 0, circulating: 0 };
+    return { total: 1_000_000_000, burned: 0, circulating: 1_000_000_000 };
   }
 }
+
 
 
 /** ---- Pacing + fetch orchestration ---- */
@@ -286,4 +275,5 @@ app.listen(PORT, () => {
   console.log(`FLIPPED backend listening on http://localhost:${PORT}`);
   console.log(`Mint: ${FLIP_MINT} | Strict 2s refresh, ≤1 RPS`);
 });
+
 
