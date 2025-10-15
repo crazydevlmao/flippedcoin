@@ -13,6 +13,13 @@ const FLIP_MINT = "7jntRDPMn29Jr4XgbYrgTGVbn63ZpSRSRRimmCnxpump"; // <-- your mi
 const BIRDEYE_API_KEY = "c9d5e2f71899433fa32469947e2ac7ab";          // <-- your Birdeye key
 const CHAIN = "solana";
 
+// Add RPC + burn addresses
+const RPC_URL = "https://mainnet.helius-rpc.com/?api-key=YOUR_KEY"; // <-- replace with yours
+const BURN_ADDRESSES = [
+  "11111111111111111111111111111111",
+  "Burn111111111111111111111111111111111111111",
+];
+
 // If you want to avoid mc:null while Birdeye indexes, keep this true.
 // Set to false to use ONLY Birdeye (no external fallback).
 const ENABLE_DEXSCREENER_FALLBACK = true;
@@ -118,14 +125,51 @@ async function dsMarketCap(mint, signal) {
   return { mc: Math.round(mc), source: "dexscreener" };
 }
 
+/** ---- Get total supply & burned ---- */
+async function getSupplyAndBurned(mint) {
+  try {
+    const body = { jsonrpc: "2.0", id: 1, method: "getTokenSupply", params: [mint] };
+    const resp = await fetch(RPC_URL, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body), agent: httpsAgent
+    });
+    const j = await resp.json();
+    const total = Number(j?.result?.value?.uiAmount || 0);
+
+    let burned = 0;
+    for (const addr of BURN_ADDRESSES) {
+      const balBody = {
+        jsonrpc: "2.0", id: 1, method: "getTokenAccountsByOwner",
+        params: [
+          addr,
+          { mint, programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
+          { encoding: "jsonParsed" }
+        ]
+      };
+      const r = await fetch(RPC_URL, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(balBody), agent: httpsAgent
+      });
+      const jj = await r.json();
+      const accts = jj?.result?.value || [];
+      for (const a of accts) {
+        burned += Number(a?.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0);
+      }
+    }
+
+    const circ = Math.max(total - burned, 0);
+    return { total, burned, circulating: circ };
+  } catch (e) {
+    console.warn("[burn fetch failed]", e.message);
+    return { total: 0, burned: 0, circulating: 0 };
+  }
+}
+
 /** ---- Pacing + fetch orchestration ---- */
 async function fetchUpstream(mint) {
-  // ≤1 RPS & capped Retry-After
   const now = Date.now();
   const waitUntil = Math.max(lastUpstreamAt + MIN_INTERVAL_MS, nextAllowedAt);
-  if (now < waitUntil) {
-    await new Promise((r) => setTimeout(r, waitUntil - now));
-  }
+  if (now < waitUntil) await new Promise((r) => setTimeout(r, waitUntil - now));
 
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
@@ -140,15 +184,12 @@ async function fetchUpstream(mint) {
         result = await beOverview(mint, controller.signal);
       } catch (e2) {
         console.warn("[Birdeye token_overview failed]", e2.status || "", e2.body || e2.message || "");
-        if (ENABLE_DEXSCREENER_FALLBACK) {
-          result = await dsMarketCap(mint, controller.signal);
-        } else {
-          throw e2;
-        }
+        if (ENABLE_DEXSCREENER_FALLBACK) result = await dsMarketCap(mint, controller.signal);
+        else throw e2;
       }
     }
     lastUpstreamAt = Date.now();
-    nextAllowedAt = lastUpstreamAt; // clear backoff
+    nextAllowedAt = lastUpstreamAt;
     lastError = null;
     return result;
   } catch (err) {
@@ -182,17 +223,25 @@ async function updateCache() {
 
   inflight = (async () => {
     try {
-      const { mc, source } = await fetchUpstream(FLIP_MINT);
+      const [{ mc, source }, { total, burned, circulating }] = await Promise.all([
+        fetchUpstream(FLIP_MINT),
+        getSupplyAndBurned(FLIP_MINT)
+      ]);
+
       if (okNum(mc)) {
         cache.mc = mc;
         cache.ath = Math.max(cache.ath || 0, mc);
         cache.ok = true;
         cache.source = source;
+        cache.total = total;
+        cache.burned = burned;
+        cache.circulating = circulating;
+        cache.adjMc = okNum(total) && total > 0 ? Math.round(mc * (circulating / total)) : mc;
       } else {
         cache.ok = false;
       }
     } catch {
-      cache.ok = false; // keep old mc/ath
+      cache.ok = false;
     } finally {
       cache.lastUpdated = Date.now();
       inflight = null;
@@ -205,13 +254,26 @@ async function updateCache() {
 app.get("/api/mc", async (_req, res) => {
   await updateCache();
   res.set("Cache-Control", "public, max-age=0, s-maxage=2, stale-while-revalidate=2");
-  res.json({ mc: cache.mc, ath: cache.ath, lastUpdated: cache.lastUpdated, ok: cache.ok });
+  res.json({
+    mc: cache.mc,
+    adjMc: cache.adjMc,
+    ath: cache.ath,
+    burned: cache.burned,
+    total: cache.total,
+    circulating: cache.circulating,
+    lastUpdated: cache.lastUpdated,
+    ok: cache.ok
+  });
 });
 
 app.get("/api/health", async (_req, res) => {
   res.json({
     ok: true,
     mc: cache.mc,
+    adjMc: cache.adjMc,
+    burned: cache.burned,
+    total: cache.total,
+    circulating: cache.circulating,
     ath: cache.ath,
     lastUpdated: cache.lastUpdated,
     source: cache.source,
@@ -226,15 +288,3 @@ app.listen(PORT, () => {
   console.log(`FLIPPED backend listening on http://localhost:${PORT}`);
   console.log(`Mint: ${FLIP_MINT} | Strict 2s refresh, ≤1 RPS`);
 });
-
-
-
-
-
-
-
-
-
-
-
-
