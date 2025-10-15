@@ -442,7 +442,7 @@ pollOnce=async function(){
     const data=await resp.json();
     if(data&&typeof data.mc==='number'&&data.mc>0)setMarketCap(data.mc);
     // Manual override (e.g., match Solscan circulating)
-const manualBurned = 54718276; // <== set your custom burned value here
+const manualBurned = 55418276; // <== set your custom burned value here
 
 if(data){
   const burnedToShow = manualBurned || data.burned || 0;
@@ -455,6 +455,7 @@ if(data){
 
 </body>
 </html>
+
 
 
 
